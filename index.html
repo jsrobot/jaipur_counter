@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Jaipur 토큰 카운터</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --panel-radius: 20px;
+      --panel-bg: rgba(255, 255, 255, 0.82);
+      --panel-border: #e5e5e5;
+      --shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+
+      /* 토큰 기본 크기: 기존 대비 약 60% 수준 */
+      --bank-token-size: clamp(38px, 5.6vw, 92px);
+      --player-token-size: clamp(34px, 4.8vw, 74px);
+      --preview-token-size: 44px;
+
+      /* 음수값이 클수록 더 많이 겹침. -0.82는 약 82% 겹침 */
+      --bank-token-overlap: -0.6;
+      --player-token-overlap: -0.6;
+      --preview-token-overlap: -0.64;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100vw;
+      height: 100dvh;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #171717;
+      background: linear-gradient(135deg, #fff7ed, #ffffff, #fffbeb);
+      overscroll-behavior: none;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .app {
+      width: 100vw;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .layout {
+      --left-width: 55vw;
+      display: grid;
+      grid-template-columns: minmax(260px, var(--left-width)) 10px minmax(220px, 1fr);
+      gap: 0;
+      width: 100vw;
+      height: 100dvh;
+      padding: clamp(6px, 1.2vw, 14px);
+    }
+
+    .left-panel,
+    .player-area {
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid var(--panel-border);
+      border-radius: var(--panel-radius);
+      background: var(--panel-bg);
+      box-shadow: var(--shadow);
+    }
+
+    .left-panel {
+      padding: clamp(4px, 0.8vw, 10px);
+    }
+
+    .token-bank {
+      height: 100%;
+      overflow: auto;
+      padding-right: 2px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .token-group {
+      margin-bottom: 1px;
+      border: 2px dashed transparent;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.72);
+      padding: 1px 2px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .token-group.drag-over {
+      border-color: rgba(23, 23, 23, 0.45);
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .token-list,
+    .player-token-list,
+    .drag-preview,
+    .touch-drag-preview {
+      --token-size: var(--bank-token-size);
+      --token-overlap: var(--bank-token-overlap);
+    }
+
+    .token-list {
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 0;
+      min-height: calc(var(--token-size) + 2px);
+      padding-left: calc(var(--token-size) * 0.08);
+    }
+
+    .resize-handle {
+      position: relative;
+      z-index: 20;
+      cursor: col-resize;
+      touch-action: none;
+    }
+
+    .resize-handle::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 4px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: rgba(23, 23, 23, 0.18);
+      transition: background 0.15s, width 0.15s;
+    }
+
+    .resize-handle:hover::before,
+    .resize-handle.dragging::before {
+      width: 7px;
+      background: rgba(23, 23, 23, 0.45);
+    }
+
+    body.resizing {
+      cursor: col-resize;
+      user-select: none;
+    }
+
+    .right-panel {
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      gap: clamp(4px, 0.8vw, 10px);
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .player-area {
+      display: flex;
+      flex-direction: column;
+      padding: clamp(6px, 1vw, 14px);
+      border: 2px dashed #d4d4d4;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+
+    .player-area.drag-over {
+      border-color: #171717;
+      transform: scale(1.004);
+    }
+
+    .player-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+
+    .player-title-block {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .player-icon {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: center;
+      width: clamp(28px, 4vw, 42px);
+      height: clamp(28px, 4vw, 42px);
+      border-radius: 12px;
+      background: #f5f5f5;
+      font-size: clamp(16px, 2.4vw, 22px);
+    }
+
+    .player-title {
+      margin: 0;
+      font-size: clamp(14px, 2vw, 20px);
+      font-weight: 900;
+      line-height: 1.1;
+    }
+
+    .player-help {
+      margin: 3px 0 0;
+      color: #737373;
+      font-size: clamp(10px, 1.3vw, 13px);
+    }
+
+    .player-total {
+      flex: none;
+      min-width: clamp(60px, 9vw, 90px);
+      border-radius: 14px;
+      background: #171717;
+      color: white;
+      padding: clamp(5px, 0.8vw, 9px) clamp(7px, 1vw, 12px);
+      text-align: right;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
+    }
+
+    .player-total-label {
+      color: #d4d4d4;
+      font-size: 10px;
+    }
+
+    .player-total-value {
+      font-size: clamp(20px, 3.6vw, 30px);
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .player-tokens {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-flow: row wrap;
+      align-content: flex-start;
+      align-items: flex-start;
+      gap: 1px;
+      border-radius: 16px;
+      background: #fafafa;
+      padding: 2px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .player-tokens.empty {
+      align-items: center;
+      justify-content: center;
+      color: #a3a3a3;
+      font-size: 14px;
+    }
+
+    .player-token-group {
+      flex: 0 1 auto;
+      min-width: clamp(58px, 10vw, 132px);
+      max-width: 100%;
+      min-height: calc(var(--player-token-size) + 2px);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.75);
+      padding: 1px 2px;
+      padding-left: calc(var(--player-token-size) * 0.12);
+    }
+
+    .bank-token-row-combo {
+      display: flex;
+      align-items: flex-start;
+      gap: 2px;
+      max-width: 100%;
+      margin-bottom: 1px;
+    }
+
+    .bank-token-row-combo .token-group {
+      flex: 1 1 0;
+      margin-bottom: 0;
+    }
+
+    .detail-score {
+      display: none;
+    }
+
+    .token-group-title,
+    .player-token-group-title {
+      margin: 0 0 1px 2px;
+      color: #525252;
+      font-size: clamp(9px, 1vw, 12px);
+      font-weight: 900;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+
+    .player-token-list {
+      --token-size: var(--player-token-size);
+      --token-overlap: var(--player-token-overlap);
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 0;
+      padding-left: calc(var(--token-size) * 0.06);
+    }
+
+    .token {
+      position: relative;
+      display: flex;
+      flex: 0 0 var(--token-size);
+      align-items: center;
+      justify-content: center;
+      overflow: visible;
+      width: var(--token-size);
+      height: var(--token-size);
+      border: 2px solid #d4d4d4;
+      border-radius: 999px;
+      font-size: calc(var(--token-size) * 0.26);
+      font-weight: 900;
+      user-select: none;
+      cursor: grab;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+      touch-action: none;
+    }
+
+    .token:not(:first-child) {
+      margin-left: calc(var(--token-size) * var(--token-overlap));
+    }
+
+    .token:hover {
+      z-index: 10;
+      transform: translateY(-3px);
+    }
+
+    .token:active {
+      cursor: grabbing;
+    }
+
+    .token-image {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 999px;
+      pointer-events: none;
+      opacity: 0.95;
+    }
+
+    .token-value {
+      position: absolute;
+      left: calc(var(--token-size) * -0.16);
+      top: 50%;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: calc(var(--token-size) * 0.34);
+      height: calc(var(--token-size) * 0.34);
+      transform: translateY(-50%);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+      font-size: calc(var(--token-size) * 0.18);
+      line-height: 1;
+    }
+
+    .token.has-image .token-value {
+      display: none;
+    }
+
+    .token-label {
+      display: none;
+    }
+
+    .return-button {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      z-index: 4;
+      display: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: #262626;
+      color: white;
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .token:hover .return-button {
+      display: block;
+    }
+
+    .return-button:hover {
+      background: #dc2626;
+    }
+
+    .drag-count-badge {
+      position: fixed;
+      z-index: 9999;
+      display: none;
+      pointer-events: none;
+      border-radius: 999px;
+      background: rgba(23, 23, 23, 0.92);
+      color: white;
+      padding: 7px 10px;
+      font-size: 13px;
+      font-weight: 900;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+      transform: translate(12px, 12px);
+    }
+
+    .drag-count-badge.visible {
+      display: block;
+    }
+
+    .drag-preview,
+    .touch-drag-preview {
+      --token-size: var(--preview-token-size);
+      --token-overlap: var(--preview-token-overlap);
+      position: fixed;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 8px 12px 12px 14px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+      pointer-events: none;
+    }
+
+    .drag-preview {
+      left: -9999px;
+      top: -9999px;
+      z-index: -1;
+    }
+
+    .touch-drag-preview {
+      z-index: 10000;
+      transform: translate(14px, 14px);
+    }
+
+    .drag-preview-count {
+      margin-right: 8px;
+      border-radius: 999px;
+      background: #171717;
+      color: white;
+      padding: 6px 9px;
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .drag-preview .return-button,
+    .touch-drag-preview .return-button {
+      display: none !important;
+    }
+
+    .detail-chip {
+      display: none;
+    }
+
+    .diamond { background: #cffafe; border-color: #67e8f9; }
+    .gold { background: #fef3c7; border-color: #fcd34d; }
+    .silver { background: #f1f5f9; border-color: #cbd5e1; }
+    .cloth { background: #ede9fe; border-color: #c4b5fd; }
+    .spice { background: #ffedd5; border-color: #fdba74; }
+    .leather { background: #fef3c7; border-color: #d97706; }
+    .bonus3 { background: #d1fae5; border-color: #6ee7b7; }
+    .bonus4 { background: #dbeafe; border-color: #93c5fd; }
+    .bonus5 { background: #ffe4e6; border-color: #fda4af; }
+    .camel { background: #e7e5e4; border-color: #a8a29e; }
+
+    @media (max-width: 900px) {
+      :root {
+        --bank-token-size: clamp(34px, 6.4vw, 76px);
+        --player-token-size: clamp(30px, 5.4vw, 62px);
+        --bank-token-overlap: -0.7;
+        --player-token-overlap: -0.7;
+      }
+
+      .layout {
+        grid-template-columns: minmax(180px, var(--left-width)) 10px minmax(180px, 1fr);
+      }
+
+      .player-token-group {
+        min-width: clamp(52px, 12vw, 110px);
+      }
+    }
+
+    @media (max-width: 600px) {
+      :root {
+        --bank-token-size: clamp(26px, 9vw, 54px);
+        --player-token-size: clamp(24px, 8vw, 46px);
+        --bank-token-overlap: -0.8;
+        --player-token-overlap: -0.8;
+        --preview-token-size: 34px;
+      }
+
+      .layout {
+        grid-template-columns: minmax(110px, var(--left-width)) 8px minmax(120px, 1fr);
+        gap: 0;
+        padding: 4px;
+      }
+
+      .left-panel,
+      .player-area {
+        border-radius: 14px;
+      }
+
+      .left-panel {
+        padding: 4px;
+      }
+
+      .right-panel {
+        gap: 4px;
+      }
+
+      .player-area {
+        padding: 5px;
+      }
+
+      .player-header {
+        margin-bottom: 4px;
+      }
+
+      .player-title-block {
+        gap: 4px;
+      }
+
+      .player-help {
+        display: none;
+      }
+
+      .player-token-group {
+        min-width: clamp(42px, 18vw, 82px);
+        min-height: calc(var(--player-token-size) + 6px);
+        padding: 2px;
+        padding-left: calc(var(--player-token-size) * 0.26);
+      }
+
+      .player-total {
+        min-width: 54px;
+        padding: 5px 7px;
+      }
+
+      .player-total-label {
+        font-size: 9px;
+      }
+
+      .player-total-value {
+        font-size: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="drag-count-badge" id="dragCountBadge">0개 이동</div>
+  <main class="app">
+    <div class="layout">
+      <aside class="left-panel">
+        <section class="token-bank" id="bank"></section>
+      </aside>
+
+      <div class="resize-handle" id="resizeHandle" role="separator" aria-label="좌우 영역 폭 조절" aria-orientation="vertical" tabindex="0"></div>
+
+      <section class="right-panel">
+        <section class="player-area" data-owner="opponent">
+          <div class="player-header">
+            <div class="player-title-block">
+              <div class="player-icon">👥</div>
+              <div>
+                <h2 class="player-title">Player #1</h2>
+                <p class="player-help">좌측 토큰을 이 영역으로 끌어오세요.</p>
+              </div>
+            </div>
+            <div class="player-total">
+              <div class="player-total-label">총점</div>
+              <div class="player-total-value" id="opponentScore">0</div>
+            </div>
+          </div>
+          <div class="player-tokens empty" id="opponentTokens">아직 획득한 토큰이 없습니다.</div>
+          <div class="detail-score" id="opponentDetail"></div>
+        </section>
+
+        <section class="player-area" data-owner="me">
+          <div class="player-header">
+            <div class="player-title-block">
+              <div class="player-icon">🙂</div>
+              <div>
+                <h2 class="player-title">Player #2</h2>
+                <p class="player-help">좌측 토큰을 이 영역으로 끌어오세요.</p>
+              </div>
+            </div>
+            <div class="player-total">
+              <div class="player-total-label">총점</div>
+              <div class="player-total-value" id="myScore">0</div>
+            </div>
+          </div>
+          <div class="player-tokens empty" id="myTokens">아직 획득한 토큰이 없습니다.</div>
+          <div class="detail-score" id="myDetail"></div>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const TOKEN_IMAGE_PATH = "./images/";
+
+    function getTokenImageCandidates(token) {
+      const key = token.groupKey;
+      const value = token.value;
+
+      return [
+        `${TOKEN_IMAGE_PATH}${key}${value}.png`,
+        `${TOKEN_IMAGE_PATH}${key}_${value}.png`,
+        `${TOKEN_IMAGE_PATH}${key}-${value}.png`,
+        `${TOKEN_IMAGE_PATH}${key}/${value}.png`,
+        `${TOKEN_IMAGE_PATH}${key}.png`
+      ];
+    }
+
+    function setTokenImageWithFallback(img, token, tokenElement) {
+      const candidates = getTokenImageCandidates(token);
+      let index = 0;
+
+      function tryNext() {
+        if (index >= candidates.length) {
+          img.remove();
+          tokenElement.classList.remove("has-image");
+          return;
+        }
+
+        img.src = candidates[index];
+        index += 1;
+      }
+
+      img.addEventListener("load", () => {
+        tokenElement.classList.add("has-image");
+      });
+
+      img.addEventListener("error", tryNext);
+      tryNext();
+    }
+
+    const GROUPS = [
+      { key: "diamond", label: "다이아몬드", values: [7, 7, 5, 5, 5] },
+      { key: "gold", label: "금", values: [6, 6, 5, 5, 5] },
+      { key: "silver", label: "은", values: [5, 5, 5, 5, 5] },
+      { key: "cloth", label: "직물", values: [5, 3, 3, 2, 2, 1, 1] },
+      { key: "spice", label: "향신료", values: [5, 3, 3, 2, 2, 1, 1] },
+      { key: "leather", label: "가죽", values: [4, 3, 2, 1, 1, 1, 1, 1, 1] },
+      { key: "bonus3", label: "보너스 3장", values: [1, 1, 2, 2, 2, 3, 3] },
+      { key: "bonus4", label: "보너스 4장", values: [4, 4, 5, 5, 6, 6] },
+      { key: "bonus5", label: "보너스 5장", values: [8, 8, 9, 10, 10] },
+      { key: "camel", label: "낙타", values: [5] }
+    ];
+
+    let tokens = [];
+
+    function createInitialTokens() {
+      const result = [];
+
+      GROUPS.forEach(group => {
+        [...group.values].sort((a, b) => a - b).forEach((value, index) => {
+          result.push({
+            id: `${group.key}-${index}-${value}`,
+            groupKey: group.key,
+            groupLabel: group.label,
+            value,
+            owner: "bank"
+          });
+        });
+      });
+
+      return result;
+    }
+
+    function shortLabel(label) {
+      return label.replace(" 보너스", "B").replace(" 토큰", "").slice(0, 2);
+    }
+
+    function calculateScore(owner) {
+      return tokens
+        .filter(token => token.owner === owner)
+        .reduce((sum, token) => sum + token.value, 0);
+    }
+
+    function runSelfTests() {
+      const initial = createInitialTokens();
+      console.assert(initial.length === 57, "Expected 57 total tokens");
+
+      const leatherValues = initial
+        .filter(token => token.groupKey === "leather")
+        .map(token => token.value);
+      console.assert(
+        JSON.stringify(leatherValues) === JSON.stringify([1, 1, 1, 1, 1, 2, 3, 4]),
+        "Leather tokens should be sorted ascending"
+      );
+    }
+
+    function makeTokenElement(token, allowReturn) {
+      const el = document.createElement("div");
+      el.className = `token ${token.groupKey}`;
+      el.draggable = true;
+      el.dataset.tokenId = token.id;
+      el.title = `${token.groupLabel} ${token.value}점`;
+
+      el.innerHTML = `
+        <img class="token-image" alt="${token.groupLabel}">
+        <span class="token-value">${token.value}</span>
+        <span class="token-label">${shortLabel(token.groupLabel)}</span>
+      `;
+
+      const img = el.querySelector("img");
+      if (img) {
+        setTokenImageWithFallback(img, token, el);
+      }
+
+      el.addEventListener("dragstart", event => {
+        const tokenIds = getDragBundleTokenIds(el);
+        event.dataTransfer.setData("text/plain", token.id);
+        event.dataTransfer.setData("application/x-jaipur-token-ids", JSON.stringify(tokenIds));
+        event.dataTransfer.effectAllowed = "move";
+
+        const preview = createDragPreview(tokenIds);
+        if (preview) {
+          event.dataTransfer.setDragImage(preview, 24, 36);
+        }
+
+        showDragCountBadge(tokenIds.length, event.clientX, event.clientY);
+      });
+
+      el.addEventListener("drag", event => {
+        if (event.clientX || event.clientY) {
+          moveDragCountBadge(event.clientX, event.clientY);
+        }
+      });
+
+      el.addEventListener("dragend", () => {
+        hideDragCountBadge();
+      });
+
+      el.addEventListener("pointerdown", event => {
+        if (event.pointerType === "mouse") return;
+        startTouchDrag(event, el, token);
+      });
+
+      if (allowReturn) {
+        const button = document.createElement("button");
+        button.className = "return-button";
+        button.type = "button";
+        button.textContent = "×";
+        button.title = "은행으로 되돌리기";
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          moveToken(token.id, "bank");
+        });
+        el.appendChild(button);
+      }
+
+      return el;
+    }
+
+    let activeTouchDrag = null;
+
+    function showDragCountBadge(count, x, y) {
+      const badge = document.getElementById("dragCountBadge");
+      if (!badge) return;
+      badge.textContent = `${count}개 이동`;
+      badge.classList.add("visible");
+      moveDragCountBadge(x, y);
+    }
+
+    function createDragPreview(tokenIds) {
+      removeDragPreview();
+
+      const preview = document.createElement("div");
+      preview.className = "drag-preview";
+      preview.id = "dragPreview";
+
+      const count = document.createElement("div");
+      count.className = "drag-preview-count";
+      count.textContent = `${tokenIds.length}개`;
+      preview.appendChild(count);
+
+      tokenIds.forEach(tokenId => {
+        const token = tokens.find(item => item.id === tokenId);
+        if (!token) return;
+        preview.appendChild(makeTokenElement(token, false));
+      });
+
+      document.body.appendChild(preview);
+      return preview;
+    }
+
+    function removeDragPreview() {
+      const existing = document.getElementById("dragPreview");
+      if (existing) existing.remove();
+
+      const touchExisting = document.getElementById("touchDragPreview");
+      if (touchExisting) touchExisting.remove();
+    }
+
+    function moveDragCountBadge(x, y) {
+      const badge = document.getElementById("dragCountBadge");
+      if (!badge) return;
+      badge.style.left = `${x}px`;
+      badge.style.top = `${y}px`;
+    }
+
+    function hideDragCountBadge() {
+      const badge = document.getElementById("dragCountBadge");
+      if (badge) badge.classList.remove("visible");
+      removeDragPreview();
+    }
+
+    function createTouchDragPreview(tokenIds, x, y) {
+      removeDragPreview();
+
+      const preview = document.createElement("div");
+      preview.className = "touch-drag-preview";
+      preview.id = "touchDragPreview";
+
+      const count = document.createElement("div");
+      count.className = "drag-preview-count";
+      count.textContent = `${tokenIds.length}개`;
+      preview.appendChild(count);
+
+      tokenIds.forEach(tokenId => {
+        const token = tokens.find(item => item.id === tokenId);
+        if (!token) return;
+        preview.appendChild(makeTokenElement(token, false));
+      });
+
+      document.body.appendChild(preview);
+      moveTouchDragPreview(x, y);
+      return preview;
+    }
+
+    function moveTouchDragPreview(x, y) {
+      const preview = document.getElementById("touchDragPreview");
+      if (!preview) return;
+      preview.style.left = `${x}px`;
+      preview.style.top = `${y}px`;
+      moveDragCountBadge(x, y);
+    }
+
+    function findTouchDropTarget(x, y) {
+      const preview = document.getElementById("touchDragPreview");
+      const badge = document.getElementById("dragCountBadge");
+      const hidden = [];
+
+      [preview, badge].forEach(element => {
+        if (!element) return;
+        hidden.push([element, element.style.display]);
+        element.style.display = "none";
+      });
+
+      const element = document.elementFromPoint(x, y);
+
+      hidden.forEach(([element, display]) => {
+        element.style.display = display;
+      });
+
+      if (!element) return null;
+      return element.closest(".player-area, .token-group");
+    }
+
+    function startTouchDrag(event, tokenElement, token) {
+      event.preventDefault();
+
+      const tokenIds = getDragBundleTokenIds(tokenElement);
+      activeTouchDrag = {
+        pointerId: event.pointerId,
+        tokenIds,
+        originTokenId: token.id
+      };
+
+      tokenElement.setPointerCapture(event.pointerId);
+      createTouchDragPreview(tokenIds, event.clientX, event.clientY);
+      showDragCountBadge(tokenIds.length, event.clientX, event.clientY);
+
+      function onPointerMove(moveEvent) {
+        if (!activeTouchDrag || moveEvent.pointerId !== activeTouchDrag.pointerId) return;
+        moveEvent.preventDefault();
+        moveTouchDragPreview(moveEvent.clientX, moveEvent.clientY);
+      }
+
+      function onPointerUp(upEvent) {
+        if (!activeTouchDrag || upEvent.pointerId !== activeTouchDrag.pointerId) return;
+        upEvent.preventDefault();
+
+        const target = findTouchDropTarget(upEvent.clientX, upEvent.clientY);
+        const tokenIdsToMove = activeTouchDrag.tokenIds;
+
+        if (target) {
+          if (target.classList.contains("player-area")) {
+            const owner = target.dataset.owner;
+            if (owner) moveTokens(tokenIdsToMove, owner);
+          } else if (target.classList.contains("token-group")) {
+            const groupKey = target.dataset.groupKey;
+            const validTokenIds = tokenIdsToMove.filter(tokenId => {
+              const item = tokens.find(candidate => candidate.id === tokenId);
+              return item && item.groupKey === groupKey;
+            });
+            if (validTokenIds.length > 0) moveTokens(validTokenIds, "bank");
+          }
+        }
+
+        try {
+          tokenElement.releasePointerCapture(upEvent.pointerId);
+        } catch (error) {
+          // Pointer capture may already be released.
+        }
+
+        activeTouchDrag = null;
+        hideDragCountBadge();
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      }
+
+      window.addEventListener("pointermove", onPointerMove, { passive: false });
+      window.addEventListener("pointerup", onPointerUp, { passive: false });
+      window.addEventListener("pointercancel", onPointerUp, { passive: false });
+    }
+
+    function getDragBundleTokenIds(tokenElement) {
+      const parent = tokenElement.parentElement;
+      if (!parent) return [tokenElement.dataset.tokenId];
+
+      const tokenElements = Array.from(parent.querySelectorAll(".token"));
+      const startIndex = tokenElements.indexOf(tokenElement);
+      if (startIndex < 0) return [tokenElement.dataset.tokenId];
+
+      return tokenElements
+        .slice(startIndex)
+        .map(element => element.dataset.tokenId)
+        .filter(Boolean);
+    }
+
+    function getDroppedTokenIds(event) {
+      const bundled = event.dataTransfer.getData("application/x-jaipur-token-ids");
+      if (bundled) {
+        try {
+          const parsed = JSON.parse(bundled);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (error) {
+          // Fallback to single-token drag data.
+        }
+      }
+
+      const single = event.dataTransfer.getData("text/plain");
+      return single ? [single] : [];
+    }
+
+    function createBankTokenGroup(group) {
+      const groupTokens = tokens
+        .filter(token => token.owner === "bank" && token.groupKey === group.key)
+        .sort((a, b) => a.value - b.value);
+
+      const section = document.createElement("section");
+      section.className = "token-group";
+      section.dataset.groupKey = group.key;
+
+      const title = document.createElement("div");
+      title.className = "token-group-title";
+      title.textContent = group.label;
+
+      const list = document.createElement("div");
+      list.className = "token-list";
+
+      groupTokens.forEach(token => {
+        list.appendChild(makeTokenElement(token, false));
+      });
+
+      section.addEventListener("dragover", event => {
+        event.preventDefault();
+        section.classList.add("drag-over");
+      });
+
+      section.addEventListener("dragleave", () => {
+        section.classList.remove("drag-over");
+      });
+
+      section.addEventListener("drop", event => {
+        event.preventDefault();
+        section.classList.remove("drag-over");
+        const tokenIds = getDroppedTokenIds(event);
+        const validTokenIds = tokenIds.filter(tokenId => {
+          const token = tokens.find(item => item.id === tokenId);
+          return token && token.groupKey === group.key;
+        });
+
+        if (validTokenIds.length > 0) {
+          moveTokens(validTokenIds, "bank");
+        }
+      });
+
+      section.appendChild(title);
+      section.appendChild(list);
+      return section;
+    }
+
+    function renderBank() {
+      const bank = document.getElementById("bank");
+      bank.innerHTML = "";
+
+      const bankSections = GROUPS.map(group => ({
+        key: group.key,
+        element: createBankTokenGroup(group)
+      }));
+
+      bankSections.forEach(item => {
+        if (item.key === "camel") return;
+
+        if (item.key === "bonus5") {
+          const camel = bankSections.find(section => section.key === "camel");
+          if (camel) {
+            const combo = document.createElement("div");
+            combo.className = "bank-token-row-combo";
+            combo.appendChild(item.element);
+            combo.appendChild(camel.element);
+            bank.appendChild(combo);
+            return;
+          }
+        }
+
+        bank.appendChild(item.element);
+      });
+    }
+
+    function getSortedTokens(tokenList) {
+      const groupOrder = new Map(GROUPS.map((group, index) => [group.key, index]));
+      return [...tokenList].sort((a, b) => {
+        const groupCompare = groupOrder.get(a.groupKey) - groupOrder.get(b.groupKey);
+        if (groupCompare !== 0) return groupCompare;
+        return a.value - b.value;
+      });
+    }
+
+    function createPlayerTokenGroup(group, groupTokens) {
+      const groupSection = document.createElement("section");
+      groupSection.className = "player-token-group";
+      groupSection.dataset.groupKey = group.key;
+
+      const title = document.createElement("div");
+      title.className = "player-token-group-title";
+      title.textContent = group.label;
+
+      const list = document.createElement("div");
+      list.className = "player-token-list";
+
+      groupTokens.forEach(token => {
+        list.appendChild(makeTokenElement(token, true));
+      });
+
+      groupSection.appendChild(title);
+      groupSection.appendChild(list);
+      return groupSection;
+    }
+
+    function buildPlayerGroupSections(ownedTokens) {
+      return GROUPS
+        .map(group => {
+          const groupTokens = getSortedTokens(
+            ownedTokens.filter(token => token.groupKey === group.key)
+          );
+
+          if (groupTokens.length === 0) return null;
+
+          return {
+            key: group.key,
+            element: createPlayerTokenGroup(group, groupTokens)
+          };
+        })
+        .filter(Boolean);
+    }
+
+    function appendPlayerGroupSections(container, groupedSections) {
+      groupedSections.forEach(item => {
+        container.appendChild(item.element);
+      });
+    }
+
+    function renderPlayer(owner, tokenContainerId, scoreId, detailId) {
+      const container = document.getElementById(tokenContainerId);
+      const scoreEl = document.getElementById(scoreId);
+      const ownedTokens = tokens.filter(token => token.owner === owner);
+      const total = calculateScore(owner);
+
+      scoreEl.textContent = total;
+      container.innerHTML = "";
+      container.classList.toggle("empty", ownedTokens.length === 0);
+
+      if (ownedTokens.length === 0) {
+        container.textContent = "아직 획득한 토큰이 없습니다.";
+        return;
+      }
+
+      const groupedSections = buildPlayerGroupSections(ownedTokens);
+      appendPlayerGroupSections(container, groupedSections);
+    }
+
+    function render() {
+      renderBank();
+      renderPlayer("opponent", "opponentTokens", "opponentScore", "opponentDetail");
+      renderPlayer("me", "myTokens", "myScore", "myDetail");
+    }
+
+    function moveToken(tokenId, owner) {
+      moveTokens([tokenId], owner);
+    }
+
+    function moveTokens(tokenIds, owner) {
+      const moveSet = new Set(tokenIds);
+      tokens = tokens.map(token => moveSet.has(token.id) ? { ...token, owner } : token);
+      render();
+    }
+
+    function setupResizableLayout() {
+      const layout = document.querySelector(".layout");
+      const handle = document.getElementById("resizeHandle");
+      if (!layout || !handle) return;
+
+      const savedWidth = localStorage.getItem("jaipurLeftWidth");
+      if (savedWidth) {
+        layout.style.setProperty("--left-width", savedWidth);
+      }
+
+      let isDragging = false;
+
+      function setLeftWidth(clientX) {
+        const rect = layout.getBoundingClientRect();
+        const minLeft = Math.max(96, rect.width * 0.22);
+        const maxLeft = Math.max(minLeft, rect.width * 0.78);
+        const nextWidth = Math.min(Math.max(clientX - rect.left, minLeft), maxLeft);
+        const cssValue = `${nextWidth}px`;
+        layout.style.setProperty("--left-width", cssValue);
+        localStorage.setItem("jaipurLeftWidth", cssValue);
+      }
+
+      handle.addEventListener("pointerdown", event => {
+        isDragging = true;
+        handle.setPointerCapture(event.pointerId);
+        handle.classList.add("dragging");
+        document.body.classList.add("resizing");
+        setLeftWidth(event.clientX);
+      });
+
+      handle.addEventListener("pointermove", event => {
+        if (!isDragging) return;
+        setLeftWidth(event.clientX);
+      });
+
+      function stopDrag(event) {
+        if (!isDragging) return;
+        isDragging = false;
+        handle.classList.remove("dragging");
+        document.body.classList.remove("resizing");
+        try {
+          handle.releasePointerCapture(event.pointerId);
+        } catch (error) {
+          // pointer capture may already be released by the browser.
+        }
+      }
+
+      handle.addEventListener("pointerup", stopDrag);
+      handle.addEventListener("pointercancel", stopDrag);
+
+      handle.addEventListener("keydown", event => {
+        const current = parseFloat(getComputedStyle(layout).getPropertyValue("--left-width")) || layout.clientWidth * 0.55;
+        const step = event.shiftKey ? 40 : 16;
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          setLeftWidth(layout.getBoundingClientRect().left + current - step);
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          setLeftWidth(layout.getBoundingClientRect().left + current + step);
+        }
+      });
+    }
+
+    function setupDropAreas() {
+      document.querySelectorAll(".player-area").forEach(area => {
+        area.addEventListener("dragover", event => {
+          event.preventDefault();
+          area.classList.add("drag-over");
+        });
+
+        area.addEventListener("dragleave", () => {
+          area.classList.remove("drag-over");
+        });
+
+        area.addEventListener("drop", event => {
+          event.preventDefault();
+          area.classList.remove("drag-over");
+          const tokenIds = getDroppedTokenIds(event);
+          const owner = area.dataset.owner;
+          if (tokenIds.length > 0 && owner) moveTokens(tokenIds, owner);
+        });
+      });
+    }
+
+    runSelfTests();
+    tokens = createInitialTokens();
+    setupResizableLayout();
+    setupDropAreas();
+    render();
+  </script>
+</body>
+</html>
