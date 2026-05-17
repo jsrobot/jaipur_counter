@@ -657,13 +657,21 @@
       const result = [];
 
       GROUPS.forEach(group => {
-        [...group.values].sort((a, b) => a - b).forEach((value, index) => {
+        const values = [...group.values];
+        const isBonusGroup = group.key.startsWith("bonus");
+
+        if (!isBonusGroup) {
+          values.sort((a, b) => a - b);
+        }
+
+        values.forEach((value, index) => {
           result.push({
             id: `${group.key}-${index}-${value}`,
             groupKey: group.key,
             groupLabel: group.label,
             value,
-            owner: "bank"
+            owner: "bank",
+            displayOrder: Math.random()
           });
         });
       });
@@ -953,7 +961,10 @@
     function createBankTokenGroup(group) {
       const groupTokens = tokens
         .filter(token => token.owner === "bank" && token.groupKey === group.key)
-        .sort((a, b) => a.value - b.value);
+        .sort((a, b) => {
+          const isBonusGroup = group.key.startsWith("bonus");
+          return isBonusGroup ? a.displayOrder - b.displayOrder : a.value - b.value;
+        });
 
       const section = document.createElement("section");
       section.className = "token-group";
