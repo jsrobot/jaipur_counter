@@ -24,6 +24,7 @@
       --bank-token-overlap: -0.6;
       --player-token-overlap: -0.6;
       --preview-token-overlap: -0.64;
+      --bonus-stack-overlap: -0.98;
     }
 
     html,
@@ -271,6 +272,19 @@
     .bank-token-row-combo .token-group {
       flex: 1 1 0;
       margin-bottom: 0;
+    }
+
+    .token-group.bonus-stack .token-list {
+      flex-direction: column;
+      flex-wrap: nowrap;
+      align-items: center;
+      padding-left: 0;
+      min-height: calc(var(--token-size) + 2px);
+    }
+
+    .token-group.bonus-stack .token:not(:first-child) {
+      margin-left: 0;
+      margin-top: calc(var(--token-size) * var(--bonus-stack-overlap));
     }
 
     .detail-score {
@@ -702,6 +716,18 @@
       );
     }
 
+
+    function canDragTokenElement(tokenElement) {
+      const parent = tokenElement.parentElement;
+      if (!parent) return true;
+
+      const isBonusStack = parent.closest(".token-group")?.classList.contains("bonus-stack");
+      if (!isBonusStack) return true;
+
+      const tokenElements = Array.from(parent.querySelectorAll(".token"));
+      return tokenElements[0] === tokenElement;
+    }
+
     function makeTokenElement(token, allowReturn) {
       const el = document.createElement("div");
       el.className = `token ${token.groupKey}`;
@@ -721,6 +747,11 @@
       }
 
       el.addEventListener("dragstart", event => {
+        if (!canDragTokenElement(el)) {
+          event.preventDefault();
+          return;
+        }
+
         const tokenIds = getDragBundleTokenIds(el);
         event.dataTransfer.setData("text/plain", token.id);
         event.dataTransfer.setData("application/x-jaipur-token-ids", JSON.stringify(tokenIds));
@@ -746,6 +777,7 @@
 
       el.addEventListener("pointerdown", event => {
         if (event.pointerType === "mouse") return;
+        if (!canDragTokenElement(el)) return;
         startTouchDrag(event, el, token);
       });
 
@@ -937,6 +969,13 @@
       const startIndex = tokenElements.indexOf(tokenElement);
       if (startIndex < 0) return [tokenElement.dataset.tokenId];
 
+      const isBonusStack = parent.closest(".token-group")?.classList.contains("bonus-stack");
+      if (isBonusStack) {
+        const topToken = tokenElements[0];
+        if (!topToken || topToken !== tokenElement) return [];
+        return [tokenElement.dataset.tokenId].filter(Boolean);
+      }
+
       return tokenElements
         .slice(startIndex)
         .map(element => element.dataset.tokenId)
@@ -969,6 +1008,10 @@
       const section = document.createElement("section");
       section.className = "token-group";
       section.dataset.groupKey = group.key;
+
+      if (group.key.startsWith("bonus")) {
+        section.classList.add("bonus-stack");
+      }
 
       const title = document.createElement("div");
       title.className = "token-group-title";
@@ -1017,23 +1060,38 @@
         key: group.key,
         element: createBankTokenGroup(group)
       }));
+      const sectionMap = new Map(bankSections.map(item => [item.key, item.element]));
 
-      bankSections.forEach(item => {
-        if (item.key === "camel") return;
+      const topRow = document.createElement("div");
+      topRow.className = "bank-token-row-combo";
+      ["diamond", "camel"].forEach(key => {
+        const section = sectionMap.get(key);
+        if (section) topRow.appendChild(section);
+      });
+      if (topRow.children.length > 0) {
+        bank.appendChild(topRow);
+      }
 
-        if (item.key === "bonus5") {
-          const camel = bankSections.find(section => section.key === "camel");
-          if (camel) {
-            const combo = document.createElement("div");
-            combo.className = "bank-token-row-combo";
-            combo.appendChild(item.element);
-            combo.appendChild(camel.element);
-            bank.appendChild(combo);
-            return;
-          }
+      const baseOrder = ["gold", "silver", "cloth", "spice", "leather"];
+      baseOrder.forEach(key => {
+        const section = sectionMap.get(key);
+        if (section) {
+          bank.appendChild(section);
         }
 
-        bank.appendChild(item.element);
+        if (key === "silver") {
+          const bonusKeys = ["bonus3", "bonus4", "bonus5"];
+          const bonusSections = bonusKeys
+            .map(bonusKey => sectionMap.get(bonusKey))
+            .filter(Boolean);
+
+          if (bonusSections.length > 0) {
+            const bonusRow = document.createElement("div");
+            bonusRow.className = "bank-token-row-combo";
+            bonusSections.forEach(bonusSection => bonusRow.appendChild(bonusSection));
+            bank.appendChild(bonusRow);
+          }
+        }
       });
     }
 
