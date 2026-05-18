@@ -275,7 +275,7 @@
     }
 
     .token-group.bonus-stack .token-list {
-      flex-direction: column;
+      flex-direction: column-reverse;
       flex-wrap: nowrap;
       align-items: center;
       padding-left: 0;
@@ -716,18 +716,6 @@
       );
     }
 
-
-    function canDragTokenElement(tokenElement) {
-      const parent = tokenElement.parentElement;
-      if (!parent) return true;
-
-      const isBonusStack = parent.closest(".token-group")?.classList.contains("bonus-stack");
-      if (!isBonusStack) return true;
-
-      const tokenElements = Array.from(parent.querySelectorAll(".token"));
-      return tokenElements[tokenElements.length - 1] === tokenElement;
-    }
-
     function makeTokenElement(token, allowReturn) {
       const el = document.createElement("div");
       el.className = `token ${token.groupKey}`;
@@ -747,11 +735,6 @@
       }
 
       el.addEventListener("dragstart", event => {
-        if (!canDragTokenElement(el)) {
-          event.preventDefault();
-          return;
-        }
-
         const tokenIds = getDragBundleTokenIds(el);
         event.dataTransfer.setData("text/plain", token.id);
         event.dataTransfer.setData("application/x-jaipur-token-ids", JSON.stringify(tokenIds));
@@ -777,7 +760,6 @@
 
       el.addEventListener("pointerdown", event => {
         if (event.pointerType === "mouse") return;
-        if (!canDragTokenElement(el)) return;
         startTouchDrag(event, el, token);
       });
 
@@ -969,13 +951,6 @@
       const startIndex = tokenElements.indexOf(tokenElement);
       if (startIndex < 0) return [tokenElement.dataset.tokenId];
 
-      const isBonusStack = parent.closest(".token-group")?.classList.contains("bonus-stack");
-      if (isBonusStack) {
-        const topToken = tokenElements[tokenElements.length - 1];
-        if (!topToken || topToken !== tokenElement) return [];
-        return [tokenElement.dataset.tokenId].filter(Boolean);
-      }
-
       return tokenElements
         .slice(startIndex)
         .map(element => element.dataset.tokenId)
@@ -1062,17 +1037,7 @@
       }));
       const sectionMap = new Map(bankSections.map(item => [item.key, item.element]));
 
-      const topRow = document.createElement("div");
-      topRow.className = "bank-token-row-combo";
-      ["diamond", "camel"].forEach(key => {
-        const section = sectionMap.get(key);
-        if (section) topRow.appendChild(section);
-      });
-      if (topRow.children.length > 0) {
-        bank.appendChild(topRow);
-      }
-
-      const baseOrder = ["gold", "silver", "cloth", "spice", "leather"];
+      const baseOrder = ["diamond", "gold", "silver", "cloth", "spice", "leather", "camel"];
       baseOrder.forEach(key => {
         const section = sectionMap.get(key);
         if (section) {
