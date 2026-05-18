@@ -269,7 +269,7 @@
     }
 
     .bank-token-row-combo.bonus-row {
-      gap: 1px;
+      gap: 0.1px;
     }
 
     .bank-token-row-combo .token-group {
@@ -1034,19 +1034,6 @@
       bankSections.forEach(item => {
         if (appendedKeys.has(item.key)) return;
 
-        if (item.key === "diamond") {
-          const camel = bankSections.find(section => section.key === "camel");
-          if (camel && !appendedKeys.has("camel")) {
-            const combo = document.createElement("div");
-            combo.className = "bank-token-row-combo";
-            combo.appendChild(item.element);
-            combo.appendChild(camel.element);
-            bank.appendChild(combo);
-            appendedKeys.add(item.key);
-            appendedKeys.add("camel");
-            return;
-          }
-        }
 
         if (item.key === "silver") {
           bank.appendChild(item.element);
@@ -1061,6 +1048,13 @@
             bonusRow.appendChild(bonus3.element);
             bonusRow.appendChild(bonus4.element);
             bonusRow.appendChild(bonus5.element);
+
+            const camel = bankSections.find(section => section.key === "camel");
+            if (camel) {
+              bonusRow.appendChild(camel.element);
+              appendedKeys.add("camel");
+            }
+
             bank.appendChild(bonusRow);
             appendedKeys.add("bonus3");
             appendedKeys.add("bonus4");
