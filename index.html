@@ -661,17 +661,32 @@
 
     let tokens = [];
 
+    function shuffleValues(values) {
+      const shuffled = [...values];
+      for (let i = shuffled.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    }
+
     function createInitialTokens() {
       const result = [];
 
       GROUPS.forEach(group => {
-        [...group.values].sort((a, b) => a - b).forEach((value, index) => {
+        const shouldRandomizeBonus = group.key === "bonus3" || group.key === "bonus4" || group.key === "bonus5";
+        const orderedValues = shouldRandomizeBonus
+          ? shuffleValues(group.values)
+          : [...group.values].sort((a, b) => a - b);
+
+        orderedValues.forEach((value, index) => {
           result.push({
             id: `${group.key}-${index}-${value}`,
             groupKey: group.key,
             groupLabel: group.label,
             value,
-            owner: "bank"
+            owner: "bank",
+            order: index
           });
         });
       });
@@ -964,9 +979,13 @@
     }
 
     function createBankTokenGroup(group) {
+      const isBonusGroup = group.key === "bonus3" || group.key === "bonus4" || group.key === "bonus5";
       const groupTokens = tokens
         .filter(token => token.owner === "bank" && token.groupKey === group.key)
-        .sort((a, b) => a.value - b.value);
+        .sort((a, b) => {
+          if (isBonusGroup) return a.order - b.order;
+          return a.value - b.value;
+        });
 
       const section = document.createElement("section");
       section.className = "token-group";
