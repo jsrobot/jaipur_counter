@@ -275,7 +275,7 @@
     }
 
     .token-group.bonus-stack .token-list {
-      flex-direction: column;
+      flex-direction: column-reverse;
       flex-wrap: nowrap;
       align-items: center;
       padding-left: 0;
@@ -1073,6 +1073,7 @@
       }
 
       const baseOrder = ["gold", "silver", "cloth", "spice", "leather"];
+      const baseOrder = ["diamond", "gold", "silver", "cloth", "spice", "leather", "camel"];
       baseOrder.forEach(key => {
         const section = sectionMap.get(key);
         if (section) {
